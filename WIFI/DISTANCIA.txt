@@ -1,0 +1,79 @@
+# rssi_distance_logger.py — Estimar distancia desde RSSI (MicroPython)
+# Autor: [Tu Nombre]
+# ---------------------------------------
+
+import network
+import time
+import math
+
+# ======= CONFIGURACIÓN =======
+SSID_OBJETIVO = "LABCOM"    # Cambia al SSID de tu AP o celular
+ARCHIVO_CSV = "datos.csv"         # Archivo de salida
+NUM_MEDICIONES = 10               # Número de muestras por punto
+
+# Parámetros del modelo de propagación
+RSSI0 = -40    # RSSI medido a 1 m (ajústalo según tu entorno)
+N = 2.8        # Exponente de pérdida (2 = libre, 3-4 = interiores)
+
+# ======= INICIALIZAR WIFI =======
+wlan = network.WLAN(network.STA_IF)
+wlan.active(True)
+
+# ======= FUNCIÓN PARA MEDIR RSSI =======
+def medir_rssi(ssid_objetivo):
+    redes = wlan.scan()
+    for red in redes:
+        nombre = red[0].decode()
+        rssi = red[3]
+        if nombre == ssid_objetivo:
+            return rssi
+    return None
+
+# ======= CABECERA DEL ARCHIVO =======
+with open(ARCHIVO_CSV, "w") as f:
+    f.write("======= REGISTRO DE MEDICIONES RSSI =======\n")
+    f.write(f"SSID objetivo: {SSID_OBJETIVO}\n")
+    f.write(f"Modelo de propagación: RSSI0 = {RSSI0} dBm | n = {N}\n")
+    f.write("------------------------------------------------------------\n")
+    f.write("{:<10}{:<40}{:<20}{:<20}\n".format("Medición", "RSSI individuales (dBm)", "Promedio (dBm)", "Distancia (m)"))
+    f.write("------------------------------------------------------------\n")
+
+print("\n=== Medición RSSI y distancia estimada ===")
+print("SSID objetivo:", SSID_OBJETIVO)
+print(f"Modelo: RSSI0 = {RSSI0} dBm, n = {N}")
+print("-----------------------------------------\n")
+
+contador = 1
+
+while True:
+    medidas = []
+    for i in range(NUM_MEDICIONES):
+        rssi = medir_rssi(SSID_OBJETIVO)
+        if rssi is not None:
+            medidas.append(rssi)
+            print(f"  {i+1:02d}: {rssi} dBm")
+        else:
+            print("  Red no encontrada. Reintentando...")
+        time.sleep(1)
+
+    if len(medidas) > 0:
+        promedio = sum(medidas) / len(medidas)
+        distancia = 10 ** ((RSSI0 - promedio) / (10 * N))
+    else:
+        promedio = -999
+        distancia = -1
+
+    print(f"\nPromedio: {promedio:.2f} dBm")
+    if distancia > 0:
+        print(f"Distancia estimada: {distancia:.2f} m\n")
+    else:
+        print("No se pudo estimar distancia\n")
+
+    # Guardar datos en formato de tabla alineada
+    medidas_str = " ".join([str(m) for m in medidas]) if medidas else "N/A"
+    with open(ARCHIVO_CSV, "a") as f:
+        f.write("{:<10}{:<40}{:<20.2f}{:<20.2f}\n".format(contador, medidas_str, promedio, distancia))
+
+    contador += 1
+    print("Esperando próxima medición...\n")
+    time.sleep(3)
